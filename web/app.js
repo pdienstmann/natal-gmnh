@@ -11,6 +11,7 @@ const state = {
   dias: [],
   hoje: "",
   horarios: {},
+  prazo: 5, // dias antes da HE em que o GM ainda pode cancelar
   selected: new Map(), // data -> código do horário
   mine: load("he-mine", {}), // { [id]: token }
   admin: loadSession("he-admin", ""),
@@ -62,6 +63,7 @@ async function refresh() {
     state.dias = data.dias;
     state.hoje = data.hoje;
     state.horarios = data.horarios || {};
+    if (Number.isInteger(data.prazoCancelamentoDias)) state.prazo = data.prazoCancelamentoDias;
     // tira da seleção o que lotou/passou enquanto a pessoa escolhia
     for (const d of [...state.selected.keys()]) {
       const dia = state.dias.find((x) => x.data === d);
@@ -92,6 +94,9 @@ function parse(iso) {
   const [y, m, d] = iso.split("-").map(Number);
   return new Date(Date.UTC(y, m - 1, d, 12));
 }
+// último dia em que o GM pode cancelar a própria inscrição
+const limiteCancelamento = (iso) => { const d = parse(iso); d.setUTCDate(d.getUTCDate() - state.prazo); return d.toISOString().slice(0, 10); };
+const podeCancelar = (iso) => state.hoje && state.hoje <= limiteCancelamento(iso);
 const fmt = (iso) => { const [, m, d] = iso.split("-"); return `${d}/${m}`; };
 const hLabel = (code) => { const h = state.horarios[code]; return h ? `${h.inicio}–${h.fim}` : code; };
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -146,11 +151,17 @@ function dayCard(dia) {
       break;
     }
     const mine = isMine(p);
-    const canRemove = state.admin || state.mine[p.id];
+    let acao = "";
+    if (!past && state.admin) acao = `<button class="rm" data-rm="${p.id}" data-date="${dia.data}">${state.mine[p.id] ? "cancelar" : "remover"}</button>`;
+    else if (!past && state.mine[p.id]) {
+      acao = podeCancelar(dia.data)
+        ? `<button class="rm" data-rm="${p.id}" data-date="${dia.data}" title="Pode cancelar até ${fmt(limiteCancelamento(dia.data))}">cancelar</button>`
+        : `<span class="lock" title="Cancelamento só até ${fmt(limiteCancelamento(dia.data))}. Fale com a coordenação.">🔒 prazo encerrado</span>`;
+    }
     lines.push(`<li class="${mine ? "mine" : ""}">
       <span class="who">${esc(p.nome)} <span class="mat">· ${esc(p.matricula)}</span></span>
       <span class="badge h-${esc(p.horario)}">${esc(hLabel(p.horario))}</span>
-      ${canRemove && !past ? `<button class="rm" data-rm="${p.id}" data-date="${dia.data}">${state.admin && !state.mine[p.id] ? "remover" : "cancelar"}</button>` : ""}
+      ${acao}
     </li>`);
   }
 
@@ -197,7 +208,8 @@ $("#weeks").addEventListener("click", async (ev) => {
   const rm = ev.target.closest("[data-rm]");
   if (rm) {
     const id = rm.dataset.rm;
-    if (!confirm(`Remover esta inscrição do dia ${fmt(rm.dataset.date)}?`)) return;
+    const aviso = state.admin ? "" : "\n\nA vaga será liberada para outro colega.";
+    if (!confirm(`Remover esta inscrição do dia ${fmt(rm.dataset.date)}?${aviso}`)) return;
     try {
       const headers = state.admin ? { "X-Admin-Key": state.admin } : { "X-Token": state.mine[id] };
       await api(`/api/inscricoes/${id}`, { method: "DELETE", headers });
@@ -220,6 +232,16 @@ $("#btn-submit").addEventListener("click", async () => {
   if (!matricula) { matEl.classList.add("invalid"); matEl.focus(); return toast("Preencha sua matrícula antes de confirmar.", true); }
   if (state.busy) return;
 
+  const dias = [...state.selected].sort();
+  const linhas = dias.map(([d, h]) => `• ${dayLabel(d)} (${hLabel(h)}) — cancelar até ${fmt(limiteCancelamento(d))}${podeCancelar(d) ? "" : " ⚠️ prazo já encerrado"}`);
+  const semCancelar = dias.some(([d]) => !podeCancelar(d));
+  const msg =
+    `ATENÇÃO: você só pode cancelar até ${state.prazo} dias antes da data da HE.\n\n` +
+    linhas.join("\n") +
+    (semCancelar ? `\n\nOs dias marcados com ⚠️ NÃO poderão ser cancelados por você.` : "") +
+    `\n\nConfirma sua inscrição?`;
+  if (!confirm(msg)) return;
+
   state.busy = true;
   $("#btn-submit").disabled = true;
   try {
@@ -232,7 +254,7 @@ $("#btn-submit").addEventListener("click", async () => {
     const ok = resultados.filter((r) => r.ok), fail = resultados.filter((r) => !r.ok);
     toast(
       `<strong>${ok.length ? "Inscrição registrada!" : "Nenhum dia confirmado."}</strong><ul>` +
-        ok.map((r) => `<li class="ok">✓ ${dayLabel(r.data)} · ${hLabel(r.horario)} confirmado</li>`).join("") +
+        ok.map((r) => `<li class="ok">✓ ${dayLabel(r.data)} · ${hLabel(r.horario)} confirmado <small>(cancelamento até ${fmt(limiteCancelamento(r.data))})</small></li>`).join("") +
         fail.map((r) => `<li class="fail">✗ ${dayLabel(r.data)} · ${hLabel(r.horario)}: ${esc(r.motivo)}</li>`).join("") +
         `</ul>`,
       ok.length === 0,

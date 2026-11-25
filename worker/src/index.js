@@ -11,6 +11,9 @@ import { buildXlsx, colName, S } from "./xlsx.js";
 
 const MAX_DATES_PER_REQUEST = 40;
 
+// O próprio GM só pode cancelar até N dias antes da data da HE (a coordenação pode sempre).
+const PRAZO_CANCELAMENTO_DIAS = 5;
+
 // Horários de HE. Todos dividem o mesmo limite de vagas do dia.
 const HORARIOS = {
   "15-01": { inicio: "15h", fim: "01h", tipo: "Folga", descricao: "Dia/noite contrário", horas: 10 },
@@ -61,7 +64,7 @@ async function listDays(env) {
   for (const s of signups.results) {
     byDate.get(s.date)?.inscritos.push({ id: s.id, nome: s.name, matricula: s.registration, horario: s.shift, em: s.created_at });
   }
-  return json({ hoje: todayBR(), horarios: HORARIOS, dias: [...byDate.values()] }, 200, { "Cache-Control": "no-store" });
+  return json({ hoje: todayBR(), prazoCancelamentoDias: PRAZO_CANCELAMENTO_DIAS, horarios: HORARIOS, dias: [...byDate.values()] }, 200, { "Cache-Control": "no-store" });
 }
 
 async function createSignups(request, env) {
@@ -141,6 +144,15 @@ async function deleteSignup(request, env, idRaw) {
 
   const token = request.headers.get("X-Token") || "";
   if (!token) return json({ erro: "Sem permissão para remover." }, 403);
+  const insc = await env.DB.prepare("SELECT date FROM signups WHERE id = ?1 AND token = ?2").bind(id, token).first();
+  if (!insc) return json({ erro: "Sem permissão ou inscrição já removida." }, 403);
+  const limite = prazoCancelamento(insc.date);
+  if (todayBR() > limite) {
+    return json(
+      { erro: `Prazo de cancelamento encerrado: era possível cancelar até ${brDate(limite).slice(0, 5)} (${PRAZO_CANCELAMENTO_DIAS} dias antes da HE). Fale com a coordenação.` },
+      403
+    );
+  }
   const r = await env.DB.prepare("DELETE FROM signups WHERE id = ?1 AND token = ?2").bind(id, token).run();
   return r.meta.changes ? json({ ok: true }) : json({ erro: "Sem permissão ou inscrição já removida." }, 403);
 }
@@ -285,6 +297,13 @@ async function exportXlsx(request, env, url) {
       "Content-Disposition": 'attachment; filename="escala-he-natal-2026.xlsx"',
     },
   });
+}
+
+// último dia em que o próprio GM ainda pode cancelar (AAAA-MM-DD)
+function prazoCancelamento(iso) {
+  const d = new Date(iso + "T12:00:00Z");
+  d.setUTCDate(d.getUTCDate() - PRAZO_CANCELAMENTO_DIAS);
+  return d.toISOString().slice(0, 10);
 }
 
 const brDate = (iso) => `${iso.slice(8, 10)}/${iso.slice(5, 7)}/${iso.slice(0, 4)}`;
