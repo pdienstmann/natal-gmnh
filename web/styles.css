@@ -249,6 +249,11 @@ main { position: relative; z-index: 1; max-width: 1180px; margin: 0 auto; paddin
   padding: 10px 14px; border-radius: var(--radius); margin-bottom: 14px; font-weight: 600; font-size: 14px;
 }
 .admin-bar span { flex: 1; }
+.admin-link {
+  background: var(--gold-500); color: var(--pine-900); font-weight: 700; text-decoration: none;
+  padding: 8px 14px; border-radius: 10px; font-size: 14px;
+}
+.admin-link:hover { background: var(--gold-300); }
 .admin-bar button { padding: 8px 14px; font-size: 14px; }
 
 /* ---------- Toast ---------- */

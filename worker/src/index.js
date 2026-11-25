@@ -4,6 +4,7 @@
 // GET    /api/dias                 -> todos os dias com as vagas e os inscritos
 // POST   /api/inscricoes           -> { nome, matricula, itens: [{ data: "2026-11-27", horario: "15-01" }, ...] }
 // DELETE /api/inscricoes/:id       -> header X-Token (da própria inscrição) ou X-Admin-Key
+// GET    /api/escala.csv           -> público, CSV com vírgula para o Google Sheets (=IMPORTDATA)
 // GET    /api/export.xlsx          -> header X-Admin-Key (ou ?key=) — planilha formatada (Excel / Google Sheets)
 // GET    /api/export.csv           -> header X-Admin-Key (ou ?key=) — planilha para o coordenador
 
@@ -35,6 +36,8 @@ export default {
         res = await createSignups(request, env);
       } else if (url.pathname.startsWith("/api/inscricoes/") && request.method === "DELETE") {
         res = await deleteSignup(request, env, url.pathname.split("/").pop());
+      } else if (url.pathname === "/api/escala.csv" && request.method === "GET") {
+        res = await escalaCsv(env);
       } else if (url.pathname === "/api/export.xlsx" && request.method === "GET") {
         res = await exportXlsx(request, env, url);
       } else if (url.pathname === "/api/export.csv" && request.method === "GET") {
@@ -177,6 +180,27 @@ async function exportCsv(request, env, url) {
       "Content-Type": "text/csv; charset=utf-8",
       "Content-Disposition": 'attachment; filename="escala-he-natal-2026.csv"',
     },
+  });
+}
+
+// CSV público (mesmos dados que a página já mostra) no formato que o IMPORTDATA do Google Sheets lê.
+// Ordenado por data, horário e ordem de inscrição.
+async function escalaCsv(env) {
+  const { results } = await env.DB.prepare(
+    `SELECT s.date, s.name, s.registration, s.shift, d.capacity,
+            ROW_NUMBER() OVER (PARTITION BY s.date ORDER BY s.created_at, s.id) AS ordem
+       FROM signups s JOIN days d ON d.date = s.date`
+  ).all();
+  const codes = Object.keys(HORARIOS);
+  results.sort((a, b) => a.date.localeCompare(b.date) || codes.indexOf(a.shift) - codes.indexOf(b.shift) || a.ordem - b.ordem);
+  const q = (v) => `"${String(v).replace(/"/g, '""')}"`;
+  const lines = [["Data", "Dia", "Horário", "Tipo", "Horas HE", "Nome", "Matrícula", "Ordem no dia", "Vagas do dia"].map(q).join(",")];
+  for (const r of results) {
+    const h = HORARIOS[r.shift];
+    lines.push([brDate(r.date), weekdayPt(r.date), h ? `${h.inicio} às ${h.fim}` : r.shift, h?.tipo ?? "", h?.horas ?? "", r.name, r.registration, r.ordem, r.capacity].map(q).join(","));
+  }
+  return new Response(lines.join("\r\n"), {
+    headers: { "Content-Type": "text/csv; charset=utf-8", "Cache-Control": "no-store" },
   });
 }
 

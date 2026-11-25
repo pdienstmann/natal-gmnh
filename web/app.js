@@ -299,6 +299,16 @@ $("#btn-csv").addEventListener("click", async () => {
   }
 });
 
+$("#btn-sheets").addEventListener("click", async () => {
+  const formula = `=IMPORTDATA("${location.origin}/api/escala.csv")`;
+  try {
+    await navigator.clipboard.writeText(formula);
+    toast(`<strong>Fórmula copiada!</strong><ul><li>1. Abra uma planilha nova no Google Sheets</li><li>2. Clique na célula A1 e cole (Ctrl+V)</li><li>3. A planilha se atualiza sozinha (o Google atualiza em até ~1h)</li></ul><small>${esc(formula)}</small>`, false, true);
+  } catch {
+    prompt("Copie esta fórmula e cole na célula A1 de uma planilha do Google Sheets:", formula);
+  }
+});
+
 // ---------- toast ----------
 let toastTimer;
 function toast(html, error = false, long = false) {
