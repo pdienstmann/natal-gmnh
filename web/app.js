@@ -268,8 +268,8 @@ $("#btn-admin").addEventListener("click", async () => {
 $("#btn-admin-out").addEventListener("click", () => { state.admin = ""; saveSession("he-admin", ""); syncAdmin(); });
 $("#btn-csv").addEventListener("click", async () => {
   try {
-    const blob = await api("/api/export.csv", { headers: { "X-Admin-Key": state.admin } });
-    const a = Object.assign(document.createElement("a"), { href: URL.createObjectURL(blob), download: "escala-he-natal-2026.csv" });
+    const blob = await api("/api/export.xlsx", { headers: { "X-Admin-Key": state.admin } });
+    const a = Object.assign(document.createElement("a"), { href: URL.createObjectURL(blob), download: "escala-he-natal-2026.xlsx" });
     a.click();
     setTimeout(() => URL.revokeObjectURL(a.href), 1000);
   } catch (e) {

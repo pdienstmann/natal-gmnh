@@ -4,7 +4,10 @@
 // GET    /api/dias                 -> todos os dias com as vagas e os inscritos
 // POST   /api/inscricoes           -> { nome, matricula, itens: [{ data: "2026-11-27", horario: "15-01" }, ...] }
 // DELETE /api/inscricoes/:id       -> header X-Token (da própria inscrição) ou X-Admin-Key
+// GET    /api/export.xlsx          -> header X-Admin-Key (ou ?key=) — planilha formatada (Excel / Google Sheets)
 // GET    /api/export.csv           -> header X-Admin-Key (ou ?key=) — planilha para o coordenador
+
+import { buildXlsx, colName, S } from "./xlsx.js";
 
 const MAX_DATES_PER_REQUEST = 40;
 
@@ -29,6 +32,8 @@ export default {
         res = await createSignups(request, env);
       } else if (url.pathname.startsWith("/api/inscricoes/") && request.method === "DELETE") {
         res = await deleteSignup(request, env, url.pathname.split("/").pop());
+      } else if (url.pathname === "/api/export.xlsx" && request.method === "GET") {
+        res = await exportXlsx(request, env, url);
       } else if (url.pathname === "/api/export.csv" && request.method === "GET") {
         res = await exportCsv(request, env, url);
       } else if (url.pathname === "/api/admin/check" && request.method === "GET") {
@@ -161,6 +166,133 @@ async function exportCsv(request, env, url) {
       "Content-Disposition": 'attachment; filename="escala-he-natal-2026.csv"',
     },
   });
+}
+
+async function exportXlsx(request, env, url) {
+  if (!isAdmin(request, env, url)) return json({ erro: "Senha inválida." }, 401);
+
+  const [daysRes, signupsRes] = await env.DB.batch([
+    env.DB.prepare("SELECT date, capacity FROM days ORDER BY date"),
+    env.DB.prepare("SELECT id, date, name, registration, shift, created_at FROM signups ORDER BY created_at, id"),
+  ]);
+  const days = daysRes.results;
+  const signups = signupsRes.results;
+
+  const byDate = new Map(days.map((d) => [d.date, []]));
+  for (const s of signups) byDate.get(s.date)?.push(s);
+  // posição de cada inscrição na ordem de chegada do dia
+  const ordem = new Map();
+  for (const list of byDate.values()) list.forEach((s, i) => ordem.set(s.id, i + 1));
+
+  const codes = Object.keys(HORARIOS);
+  const hTxt = (c) => (HORARIOS[c] ? `${HORARIOS[c].inicio} às ${HORARIOS[c].fim}` : c);
+  const hHoras = (c) => HORARIOS[c]?.horas ?? 0;
+  const t = (v, s = S.cell) => ({ v, s });
+  const n = (v, s = S.cellCenter) => ({ v, s });
+
+  const agora = new Date(Date.now() - 3 * 3600 * 1000);
+  const geradoEm = `Gerado em ${agora.toISOString().slice(8, 10)}/${agora.toISOString().slice(5, 7)}/${agora.toISOString().slice(0, 4)} às ${agora.toISOString().slice(11, 16)} (horário de Brasília)`;
+
+  // ---------- Aba 1: escala por dia, agrupada por horário ----------
+  const esc1 = { name: "Escala por dia", cols: [7, 38, 14, 16, 11], rows: [], merges: [] };
+  const W = 5;
+  const add = (cells, height) => esc1.rows.push({ cells, height });
+  const mergeRow = () => esc1.merges.push(`A${esc1.rows.length}:${colName(W - 1)}${esc1.rows.length}`);
+  const fill = (first, style) => [first, ...Array.from({ length: W - 1 }, () => ({ s: style }))];
+
+  add(fill(t("Escala de Hora Extra · Natal 2026 · GM Novo Hamburgo", S.title), S.title), 30);
+  mergeRow();
+  add([t(geradoEm, S.subtitle)]);
+  add([t(`Total: ${signups.length} inscrições · ${signups.reduce((a, s) => a + hHoras(s.shift), 0)} horas de HE`, S.subtitle)]);
+
+  for (const d of days) {
+    const list = byDate.get(d.date);
+    const wd = weekdayPt(d.date);
+    const weekend = ["Sexta", "Sábado", "Domingo"].includes(wd);
+    add([]);
+    add(fill(t(`${wd.toUpperCase()} · ${brDate(d.date)}  —  ${list.length} de ${d.capacity} vagas preenchidas`, weekend ? S.dayWeekend : S.dayWeekday), weekend ? S.dayWeekend : S.dayWeekday), 24);
+    mergeRow();
+    if (!list.length) {
+      add(fill(t("Nenhum inscrito", S.empty), S.empty));
+      mergeRow();
+      continue;
+    }
+    add(["Nº", "Nome", "Matrícula", "Horário", "Horas HE"].map((h) => t(h, S.head)));
+    for (const code of codes) {
+      const grupo = list.filter((s) => s.shift === code);
+      if (!grupo.length) continue;
+      const h = HORARIOS[code];
+      const st = h.tipo === "Folga" ? S.groupFolga : S.groupExt;
+      add(fill(t(`${h.tipo} · ${h.inicio} às ${h.fim} · ${h.horas}h de HE  —  ${grupo.length} GM${grupo.length > 1 ? "s" : ""}`, st), st), 20);
+      mergeRow();
+      grupo.forEach((s, i) => add([n(i + 1), t(s.name), n(s.registration), n(hTxt(s.shift)), n(hHoras(s.shift))]));
+    }
+  }
+
+  // ---------- Aba 2: lista completa com filtro ----------
+  const lista = {
+    name: "Lista completa",
+    cols: [12, 11, 14, 11, 10, 36, 13, 13, 19],
+    rows: [],
+    freezeRows: 1,
+    autoFilter: "A1:I1",
+    landscape: true,
+  };
+  lista.rows.push({ height: 22, cells: ["Data", "Dia", "Horário", "Tipo", "Horas HE", "Nome", "Matrícula", "Ordem no dia", "Inscrito em"].map((h) => t(h, S.head)) });
+  const sorted = [...signups].sort((a, b) => a.date.localeCompare(b.date) || codes.indexOf(a.shift) - codes.indexOf(b.shift) || ordem.get(a.id) - ordem.get(b.id));
+  sorted.forEach((s, i) => {
+    const z = i % 2 === 1;
+    lista.rows.push({
+      cells: [
+        n(excelDate(s.date), z ? S.dateZebra : S.date),
+        n(weekdayPt(s.date), z ? S.cellCenterZebra : S.cellCenter),
+        n(hTxt(s.shift), z ? S.cellCenterZebra : S.cellCenter),
+        n(HORARIOS[s.shift]?.tipo ?? "", z ? S.cellCenterZebra : S.cellCenter),
+        n(hHoras(s.shift), z ? S.cellCenterZebra : S.cellCenter),
+        t(s.name, z ? S.cellZebra : S.cell),
+        n(s.registration, z ? S.cellCenterZebra : S.cellCenter),
+        n(ordem.get(s.id), z ? S.cellCenterZebra : S.cellCenter),
+        n(brDateTime(s.created_at), z ? S.cellCenterZebra : S.cellCenter),
+      ],
+    });
+  });
+
+  // ---------- Aba 3: totais por GM ----------
+  const porGm = new Map();
+  for (const s of signups) {
+    const g = porGm.get(s.registration) || { nome: s.name, mat: s.registration, dias: 0, folga: 0, ext: 0, horas: 0 };
+    g.nome = s.name;
+    g.dias++;
+    HORARIOS[s.shift]?.tipo === "Folga" ? g.folga++ : g.ext++;
+    g.horas += hHoras(s.shift);
+    porGm.set(s.registration, g);
+  }
+  const totais = { name: "Totais por GM", cols: [36, 13, 9, 17, 14, 12], rows: [], freezeRows: 1, autoFilter: "A1:F1" };
+  totais.rows.push({ height: 22, cells: ["Nome", "Matrícula", "Dias", "Folgas (15h–01h)", "Extensões", "Horas HE"].map((h) => t(h, S.head)) });
+  const gms = [...porGm.values()].sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR"));
+  gms.forEach((g, i) => {
+    const z = i % 2 === 1;
+    const c = z ? S.cellCenterZebra : S.cellCenter;
+    totais.rows.push({ cells: [t(g.nome, z ? S.cellZebra : S.cell), n(g.mat, c), n(g.dias, c), n(g.folga, c), n(g.ext, c), n(g.horas, c)] });
+  });
+  const sum = (k) => gms.reduce((a, g) => a + g[k], 0);
+  totais.rows.push({ cells: [t(`TOTAL · ${gms.length} GMs`, S.totalLabel), t("", S.totalNum), n(sum("dias"), S.totalNum), n(sum("folga"), S.totalNum), n(sum("ext"), S.totalNum), n(sum("horas"), S.totalNum)] });
+
+  const bytes = buildXlsx([esc1, lista, totais]);
+  return new Response(bytes, {
+    headers: {
+      "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      "Content-Disposition": 'attachment; filename="escala-he-natal-2026.xlsx"',
+    },
+  });
+}
+
+const brDate = (iso) => `${iso.slice(8, 10)}/${iso.slice(5, 7)}/${iso.slice(0, 4)}`;
+// número de série de data do Excel (dias desde 30/12/1899)
+const excelDate = (iso) => Math.round((Date.UTC(+iso.slice(0, 4), +iso.slice(5, 7) - 1, +iso.slice(8, 10)) - Date.UTC(1899, 11, 30)) / 86400000);
+function brDateTime(utcIso) {
+  const d = new Date(new Date(utcIso).getTime() - 3 * 3600 * 1000).toISOString();
+  return `${d.slice(8, 10)}/${d.slice(5, 7)} ${d.slice(11, 16)}`;
 }
 
 // ---------------------------------------------------------------------------
