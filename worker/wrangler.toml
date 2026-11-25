@@ -10,7 +10,7 @@ ALLOWED_ORIGIN = "*"
 binding = "DB"
 database_name = "escala-natal-gm"
 # Cole aqui o id que aparece ao rodar: npx wrangler d1 create escala-natal-gm
-database_id = "COLE-AQUI-O-ID-DO-D1"
+database_id = "c77a3e79-8414-4ac3-874b-73099c49d591"
 migrations_dir = "migrations"
 
 # Senha do coordenador (NÃO fica no git). Defina com:
