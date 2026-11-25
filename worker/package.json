@@ -1,0 +1,14 @@
+{
+  "name": "escala-natal-gm-api",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "db:migrate:local": "wrangler d1 migrations apply escala-natal-gm --local",
+    "db:migrate": "wrangler d1 migrations apply escala-natal-gm --remote",
+    "deploy": "wrangler deploy"
+  },
+  "devDependencies": {
+    "wrangler": "^4.40.0"
+  }
+}

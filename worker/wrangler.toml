@@ -1,0 +1,17 @@
+name = "escala-natal-gm"
+main = "src/index.js"
+compatibility_date = "2025-09-01"
+
+[vars]
+# Domínio do front na Vercel (ex.: "https://escala-natal-gm.vercel.app"). "*" libera qualquer origem.
+ALLOWED_ORIGIN = "*"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "escala-natal-gm"
+# Cole aqui o id que aparece ao rodar: npx wrangler d1 create escala-natal-gm
+database_id = "COLE-AQUI-O-ID-DO-D1"
+migrations_dir = "migrations"
+
+# Senha do coordenador (NÃO fica no git). Defina com:
+#   npx wrangler secret put ADMIN_KEY

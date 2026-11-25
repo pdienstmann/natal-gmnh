@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Escala HE Natal · GM Novo Hamburgo</title>
+  <meta name="description" content="Inscrição para hora extra no evento de Natal 2026 — Guarda Municipal de Novo Hamburgo.">
+  <meta name="theme-color" content="#0d2418">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎄</text></svg>">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600;9..144,800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="snow" aria-hidden="true"></div>
+
+  <header class="hero">
+    <div class="lights" aria-hidden="true"></div>
+    <p class="kicker">Guarda Municipal de Novo Hamburgo</p>
+    <h1>Escala de Hora Extra <span>Natal 2026</span></h1>
+    <p class="period">27 de novembro a 26 de dezembro</p>
+    <ul class="rules">
+      <li><strong>Sex, Sáb e Dom:</strong> 20 vagas por dia</li>
+      <li><strong>Seg a Qui:</strong> 6 vagas por dia</li>
+      <li>Quem preencher primeiro fica confirmado. Dia lotado, escolha outro.</li>
+    </ul>
+  </header>
+
+  <main>
+    <section class="card me" aria-labelledby="me-title">
+      <h2 id="me-title">1. Seus dados</h2>
+      <div class="fields">
+        <label>Nome (como quer que apareça na escala)
+          <input id="nome" autocomplete="name" maxlength="60" placeholder="Ex.: GM Silva">
+        </label>
+        <label>Matrícula
+          <input id="matricula" inputmode="numeric" maxlength="20" placeholder="Ex.: 12345">
+        </label>
+      </div>
+      <p class="hint">2. Toque nos dias em que você pode fazer HE e depois em <strong>Confirmar</strong>. A lista atualiza sozinha.</p>
+    </section>
+
+    <div id="admin-bar" class="admin-bar" hidden>
+      <span>🔑 Modo coordenação</span>
+      <button type="button" id="btn-csv">Baixar planilha (CSV)</button>
+      <button type="button" id="btn-admin-out" class="ghost">Sair</button>
+    </div>
+
+    <div id="status" class="status" role="status">Carregando escala…</div>
+    <div id="weeks"></div>
+  </main>
+
+  <footer>
+    <p>Feliz Natal e bom serviço! 🎄 · <button type="button" id="btn-admin" class="link">Coordenação</button></p>
+  </footer>
+
+  <div id="cart" class="cart" hidden>
+    <div class="cart-inner">
+      <span id="cart-text"></span>
+      <div class="cart-actions">
+        <button type="button" id="btn-clear" class="ghost">Limpar</button>
+        <button type="button" id="btn-submit">Confirmar</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="toast" class="toast" role="alert" hidden></div>
+
+  <script src="app.js"></script>
+</body>
+</html>
