@@ -10,7 +10,8 @@ const WD_FULL = ["Domingo", "Segunda", "Terça", "Quarta", "Quinta", "Sexta", "S
 const state = {
   dias: [],
   hoje: "",
-  selected: new Set(),
+  horarios: {},
+  selected: new Map(), // data -> código do horário
   mine: load("he-mine", {}), // { [id]: token }
   admin: loadSession("he-admin", ""),
   busy: false,
@@ -60,8 +61,9 @@ async function refresh() {
     const data = await api("/api/dias");
     state.dias = data.dias;
     state.hoje = data.hoje;
+    state.horarios = data.horarios || {};
     // tira da seleção o que lotou/passou enquanto a pessoa escolhia
-    for (const d of state.selected) {
+    for (const d of [...state.selected.keys()]) {
       const dia = state.dias.find((x) => x.data === d);
       if (!dia || !canPick(dia)) state.selected.delete(d);
     }
@@ -91,6 +93,7 @@ function parse(iso) {
   return new Date(Date.UTC(y, m - 1, d, 12));
 }
 const fmt = (iso) => { const [, m, d] = iso.split("-"); return `${d}/${m}`; };
+const hLabel = (code) => { const h = state.horarios[code]; return h ? `${h.inicio}–${h.fim}` : code; };
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 
 // ---------- render ----------
@@ -121,7 +124,7 @@ function render() {
   const n = state.selected.size;
   $("#cart").hidden = n === 0;
   $("#cart-text").innerHTML = n
-    ? `<strong>${n}</strong> dia${n > 1 ? "s" : ""} selecionado${n > 1 ? "s" : ""}: ${[...state.selected].sort().map(fmt).join(", ")}`
+    ? `<strong>${n}</strong> dia${n > 1 ? "s" : ""} selecionado${n > 1 ? "s" : ""}: ${[...state.selected].sort().map(([d, h]) => `${fmt(d)} (${hLabel(h)})`).join(", ")}`
     : "";
 }
 
@@ -146,6 +149,7 @@ function dayCard(dia) {
     const canRemove = state.admin || state.mine[p.id];
     lines.push(`<li class="${mine ? "mine" : ""}">
       <span class="who">${esc(p.nome)} <span class="mat">· ${esc(p.matricula)}</span></span>
+      <span class="badge h-${esc(p.horario)}">${esc(hLabel(p.horario))}</span>
       ${canRemove && !past ? `<button class="rm" data-rm="${p.id}" data-date="${dia.data}">${state.admin && !state.mine[p.id] ? "remover" : "cancelar"}</button>` : ""}
     </li>`);
   }
@@ -154,7 +158,20 @@ function dayCard(dia) {
   if (past) btn = `<button class="pick" disabled>Encerrado</button>`;
   else if (mineIn) btn = `<button class="pick in" disabled>✓ Você está na escala</button>`;
   else if (full) btn = `<button class="pick" disabled>Lotado</button>`;
-  else btn = `<button class="pick" data-pick="${dia.data}" aria-pressed="${sel}">${sel ? "✓ Selecionado" : "Quero este dia"}</button>`;
+  else {
+    const escolhido = state.selected.get(dia.data);
+    btn = `<p class="pick-label">${sel ? "✓ Selecionado — toque de novo para desmarcar" : "Escolha o horário:"}</p>
+      <div class="shifts">${Object.entries(state.horarios)
+        .map(([code, h]) => `<button class="shift ${escolhido === code ? "on" : ""}" data-pick="${dia.data}" data-h="${code}" aria-pressed="${escolhido === code}">
+            <b>${h.inicio}–${h.fim}</b><small>${h.tipo} · ${h.horas}h</small></button>`)
+        .join("")}</div>`;
+  }
+
+  const porHorario = Object.keys(state.horarios)
+    .map((code) => [code, dia.inscritos.filter((p) => p.horario === code).length])
+    .filter(([, n]) => n > 0)
+    .map(([code, n]) => `${hLabel(code)}: <b>${n}</b>`)
+    .join(" · ");
 
   return `<article class="day ${weekend ? "weekend" : ""} ${sel ? "selected" : ""} ${full ? "full" : ""} ${past ? "closed" : ""}">
     <div class="day-head">
@@ -162,6 +179,7 @@ function dayCard(dia) {
       <span class="count">${total}/${dia.capacidade}</span>
     </div>
     <div class="bar"><div style="width:${Math.min(100, (total / dia.capacidade) * 100)}%"></div></div>
+    ${porHorario ? `<div class="split">${porHorario}</div>` : ""}
     <ol class="slots">${lines.join("")}</ol>
     <div class="day-foot">${btn}</div>
   </article>`;
@@ -171,8 +189,8 @@ function dayCard(dia) {
 $("#weeks").addEventListener("click", async (ev) => {
   const pick = ev.target.closest("[data-pick]");
   if (pick) {
-    const d = pick.dataset.pick;
-    state.selected.has(d) ? state.selected.delete(d) : state.selected.add(d);
+    const d = pick.dataset.pick, h = pick.dataset.h;
+    state.selected.get(d) === h ? state.selected.delete(d) : state.selected.set(d, h);
     render();
     return;
   }
@@ -205,8 +223,8 @@ $("#btn-submit").addEventListener("click", async () => {
   state.busy = true;
   $("#btn-submit").disabled = true;
   try {
-    const datas = [...state.selected].sort();
-    const { resultados } = await api("/api/inscricoes", { method: "POST", body: JSON.stringify({ nome, matricula, datas }) });
+    const itens = [...state.selected].sort().map(([data, horario]) => ({ data, horario }));
+    const { resultados } = await api("/api/inscricoes", { method: "POST", body: JSON.stringify({ nome, matricula, itens }) });
     for (const r of resultados) if (r.ok) state.mine[r.id] = r.token;
     save("he-mine", state.mine);
     state.selected.clear();
@@ -214,8 +232,8 @@ $("#btn-submit").addEventListener("click", async () => {
     const ok = resultados.filter((r) => r.ok), fail = resultados.filter((r) => !r.ok);
     toast(
       `<strong>${ok.length ? "Inscrição registrada!" : "Nenhum dia confirmado."}</strong><ul>` +
-        ok.map((r) => `<li class="ok">✓ ${dayLabel(r.data)} confirmado</li>`).join("") +
-        fail.map((r) => `<li class="fail">✗ ${dayLabel(r.data)}: ${esc(r.motivo)}</li>`).join("") +
+        ok.map((r) => `<li class="ok">✓ ${dayLabel(r.data)} · ${hLabel(r.horario)} confirmado</li>`).join("") +
+        fail.map((r) => `<li class="fail">✗ ${dayLabel(r.data)} · ${hLabel(r.horario)}: ${esc(r.motivo)}</li>`).join("") +
         `</ul>`,
       ok.length === 0,
       true

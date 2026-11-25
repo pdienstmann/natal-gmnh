@@ -175,6 +175,26 @@ main { position: relative; z-index: 1; max-width: 1180px; margin: 0 auto; paddin
 .slots .rm:hover { background: var(--red-100); }
 
 .day-foot { padding: 10px 12px 12px; }
+.pick-label { margin: 0 0 6px; font-size: 12px; font-weight: 600; color: var(--ink-soft); }
+.shifts { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+.shift {
+  display: grid; gap: 1px; justify-items: center;
+  border: 2px solid var(--pine-500); background: #fff; color: var(--pine-600);
+  padding: 7px 2px; border-radius: 10px; line-height: 1.15;
+}
+.shift b { font-size: 14px; font-variant-numeric: tabular-nums; }
+.shift small { font-size: 10.5px; color: var(--ink-soft); }
+.shift:hover { background: #eef6f1; }
+.shift.on { background: var(--gold-500); border-color: var(--gold-500); color: var(--pine-900); }
+.shift.on small { color: var(--pine-900); }
+
+.split { padding: 6px 14px 0; font-size: 12px; color: var(--ink-soft); }
+.split b { color: var(--ink); }
+.badge {
+  flex: 0 0 auto; font-size: 11px; font-weight: 700; padding: 1px 7px; border-radius: 999px;
+  font-variant-numeric: tabular-nums; background: #e7efe9; color: var(--pine-600);
+}
+.badge.h-15-01 { background: var(--red-100); color: var(--red-600); }
 .pick {
   width: 100%; border: 2px solid var(--pine-500); background: #fff; color: var(--pine-600);
   padding: 10px; border-radius: 10px; font-weight: 700; font-size: 15px;
