@@ -15,6 +15,10 @@ const MAX_DATES_PER_REQUEST = 40;
 // O próprio GM só pode cancelar até N dias antes da data da HE (a coordenação pode sempre).
 const PRAZO_CANCELAMENTO_DIAS = 5;
 
+// Cache em memória da escala. Cada atualização das páginas lê só 1 linha do banco (a versão);
+// a escala completa só é relida quando a versão muda (gatilhos em 0003_versao.sql).
+let cacheDias = { versao: null, hoje: null, corpo: null };
+
 // Horários de HE. Todos dividem o mesmo limite de vagas do dia.
 const HORARIOS = {
   "15-01": { inicio: "15h", fim: "01h", tipo: "Folga", descricao: "Dia/noite contrário", horas: 10 },
@@ -58,6 +62,12 @@ export default {
 // ---------------------------------------------------------------------------
 
 async function listDays(env) {
+  const hoje = todayBR();
+  const versao = await env.DB.prepare("SELECT v FROM meta WHERE k = 'versao'").first("v");
+  if (versao != null && versao === cacheDias.versao && hoje === cacheDias.hoje && cacheDias.corpo) {
+    return new Response(cacheDias.corpo, { headers: { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" } });
+  }
+
   const [days, signups] = await env.DB.batch([
     env.DB.prepare("SELECT date, capacity FROM days ORDER BY date"),
     env.DB.prepare("SELECT id, date, name, registration, shift, created_at FROM signups ORDER BY created_at, id"),
@@ -67,7 +77,9 @@ async function listDays(env) {
   for (const s of signups.results) {
     byDate.get(s.date)?.inscritos.push({ id: s.id, nome: s.name, matricula: s.registration, horario: s.shift, em: s.created_at });
   }
-  return json({ hoje: todayBR(), prazoCancelamentoDias: PRAZO_CANCELAMENTO_DIAS, horarios: HORARIOS, dias: [...byDate.values()] }, 200, { "Cache-Control": "no-store" });
+  const corpo = JSON.stringify({ hoje, versao, prazoCancelamentoDias: PRAZO_CANCELAMENTO_DIAS, horarios: HORARIOS, dias: [...byDate.values()] });
+  cacheDias = { versao: versao ?? null, hoje, corpo };
+  return new Response(corpo, { headers: { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" } });
 }
 
 async function createSignups(request, env) {

@@ -2,7 +2,8 @@
 // Em produção a Vercel redireciona /api/* para o Worker (ver vercel.json).
 // Para testar local: abra index.html?api=http://localhost:8787
 const API = new URLSearchParams(location.search).get("api") || "";
-const POLL_MS = 5000;
+const POLL_MS = 10000;
+const IDLE_MS = 5 * 60 * 1000; // sem mexer na página por 5 min: pausa a atualização automática
 
 const WD = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
 const WD_FULL = ["Domingo", "Segunda", "Terça", "Quarta", "Quinta", "Sexta", "Sábado"];
@@ -340,5 +341,23 @@ $("#toast").addEventListener("click", () => ($("#toast").hidden = true));
 // ---------- início ----------
 syncAdmin();
 refresh();
-setInterval(() => { if (!document.hidden) refresh(); }, POLL_MS);
-document.addEventListener("visibilitychange", () => { if (!document.hidden) refresh(); });
+// atualização automática, pausada quando a aba está escondida ou a pessoa não mexe há 5 min
+let ultimaAtividade = Date.now();
+let pausado = false;
+function atividade() {
+  ultimaAtividade = Date.now();
+  if (pausado) { pausado = false; refresh(); }
+}
+for (const ev of ["pointerdown", "keydown", "scroll", "touchstart", "focus"]) {
+  window.addEventListener(ev, atividade, { passive: true });
+}
+setInterval(() => {
+  if (document.hidden || pausado) return;
+  if (Date.now() - ultimaAtividade > IDLE_MS) {
+    pausado = true;
+    setStatus("Atualização automática pausada — toque na tela para atualizar");
+    return;
+  }
+  refresh();
+}, POLL_MS);
+document.addEventListener("visibilitychange", () => { if (!document.hidden) atividade(); });

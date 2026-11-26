@@ -1,6 +1,6 @@
 // Escala em tempo real — visão da coordenação/escala diária (somente leitura)
 const API = new URLSearchParams(location.search).get("api") || "";
-const POLL_MS = 10000;
+const POLL_MS = 15000;
 const WD_FULL = ["Domingo", "Segunda-feira", "Terça-feira", "Quarta-feira", "Quinta-feira", "Sexta-feira", "Sábado"];
 const WD = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
 
