@@ -160,9 +160,10 @@ function dayCard(dia) {
         : `<span class="lock" title="Cancelamento só até ${fmt(limiteCancelamento(dia.data))}. Fale com a coordenação.">🔒 prazo encerrado</span>`;
     }
     lines.push(`<li class="${mine ? "mine" : ""}">
-      <span class="who">${esc(p.nome)} <span class="mat">· ${esc(p.matricula)}</span></span>
-      <span class="badge h-${esc(p.horario)}">${esc(hLabel(p.horario))}</span>
-      ${acao}
+      <div class="pessoa">
+        <span class="who" title="${esc(p.nome)}">${esc(p.nome)}</span>
+        <span class="sub"><span class="mat">mat. ${esc(p.matricula)}</span><span class="badge h-${esc(p.horario)}">${esc(hLabel(p.horario))}</span>${acao}</span>
+      </div>
     </li>`);
   }
 
