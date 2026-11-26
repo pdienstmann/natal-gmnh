@@ -155,9 +155,8 @@ function dayCard(dia) {
     let acao = "";
     if (!past && state.admin) acao = `<button class="rm" data-rm="${p.id}" data-date="${dia.data}">${state.mine[p.id] ? "cancelar" : "remover"}</button>`;
     else if (!past && state.mine[p.id]) {
-      acao = podeCancelar(dia.data)
-        ? `<button class="rm" data-rm="${p.id}" data-date="${dia.data}" title="Pode cancelar até ${fmt(limiteCancelamento(dia.data))}">cancelar</button>`
-        : `<span class="lock" title="Cancelamento só até ${fmt(limiteCancelamento(dia.data))}. Fale com a coordenação.">🔒 prazo encerrado</span>`;
+      // depois do prazo o botão some; a API também recusa o cancelamento
+      if (podeCancelar(dia.data)) acao = `<button class="rm" data-rm="${p.id}" data-date="${dia.data}" title="Pode cancelar até ${fmt(limiteCancelamento(dia.data))}">cancelar</button>`;
     }
     lines.push(`<li class="${mine ? "mine" : ""}">
       <div class="pessoa">
